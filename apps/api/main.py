@@ -1,4 +1,3 @@
-from fastapi import FastAPI
 import uvicorn
 from packages.common.config.settings import get_settings
 from fastapi import FastAPI, status
@@ -55,7 +54,11 @@ async def health_check():
 
     # 2. Test Neo4j Connection
     try:
-        async with AsyncGraphDatabase.driver(settings.neo4j_uri, auth=(settings.neo4j_user, settings.neo4j_password)) as driver:
+        async with AsyncGraphDatabase.driver(
+            settings.neo4j_uri, 
+            auth=(settings.neo4j_user, settings.neo4j_password),
+            encrypted=False
+        ) as driver:
             await driver.verify_connectivity()
             health_status["neo4j"] = "connected"
     except Exception as e:
