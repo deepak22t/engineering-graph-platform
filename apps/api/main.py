@@ -1,10 +1,12 @@
+import asyncpg
+import miniopy_async
 import uvicorn
-from packages.common.config.settings import get_settings
 from fastapi import FastAPI, status
 from fastapi.responses import JSONResponse
-import asyncpg
 from neo4j import AsyncGraphDatabase
-import miniopy_async
+
+from packages.common.config.settings import get_settings
+
 settings = get_settings()
 
 app = FastAPI(
@@ -41,7 +43,7 @@ async def health_check():
         "neo4j": "unknown",
         "minio": "unknown"
     }
-    
+
     # 1. Test PostgreSQL Connection
     try:
         conn = await asyncpg.connect(settings.postgres_uri)
@@ -55,7 +57,7 @@ async def health_check():
     # 2. Test Neo4j Connection
     try:
         async with AsyncGraphDatabase.driver(
-            settings.neo4j_uri, 
+            settings.neo4j_uri,
             auth=(settings.neo4j_user, settings.neo4j_password),
             encrypted=False
         ) as driver:
@@ -81,7 +83,7 @@ async def health_check():
 
     if health_status["status"] == "unhealthy":
         return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content=health_status)
-    
+
     return health_status
 
 if __name__ == "__main__":
