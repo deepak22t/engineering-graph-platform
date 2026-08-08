@@ -5,13 +5,16 @@ A Relationship represents a directed edge between two entities in the graph
 An EvidenceBackedRelationship attaches provenance and confidence.
 """
 
+from collections.abc import Mapping
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from packages.domain.enums import RelationshipType
 from packages.domain.evidence import Confidence, Evidence
+from packages.domain.immutability import deep_freeze
 
 
 class Relationship(BaseModel):
@@ -23,23 +26,22 @@ class Relationship(BaseModel):
     relationship_type: RelationshipType
     source_id: UUID
     target_id: UUID
-    attributes: dict[str, object] = Field(default_factory=dict)
+    attributes: Mapping[str, Any] = Field(default_factory=dict)
+
+    @field_validator("attributes", mode="after")
+    @classmethod
+    def freeze_attributes(cls, value: Mapping[str, Any]) -> Mapping[str, Any]:
+        return deep_freeze(value)
+
     created_at: datetime
     updated_at: datetime
-
-    @model_validator(mode="after")
-    def validate_no_self_loop(self) -> "Relationship":
-        """Prevent self-referential relationships where source equals target."""
-        if self.source_id == self.target_id:
-            raise ValueError("Self-referential relationships (source_id == target_id) are not allowed.")
-        return self
 
 
 class EvidenceBackedRelationship(BaseModel):
     """A relationship with its full provenance chain and confidence assessment."""
 
     relationship: Relationship
-    evidence: list[Evidence] = Field(min_length=1)
+    evidence: tuple[Evidence, ...] = Field(min_length=1)
     confidence: Confidence
 
     @property

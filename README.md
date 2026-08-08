@@ -1,106 +1,71 @@
-# engineering-graph-platform
+# Engineering Graph Platform
 
-echo 'https://deepak22t:YOUR_NEW_TOKEN@github.com' > ~/.git-credentials
-chmod 600 ~/.git-credentials
-git push -u origin main
+The Engineering Graph Platform builds an evidence-backed canonical graph from
+engineering artifacts and exposes it through an API and interactive diagrams.
 
+## Prerequisites
 
- uv pip freeze > requirements.txt
+- Python 3.11 or later
+- Docker with Docker Compose
 
- (.venv) deepak@deepak:/mnt/c/Desktop/egp/engineering-graph-platform$ docker compose version
-docker: unknown command: docker compose
+## Local development
 
-Run 'docker --help' for more information
-(.venv) deepak@deepak:/mnt/c/Desktop/egp/engineering-graph-platform$ docker-compose version
-docker-compose version 1.29.2, build unknown
-docker-py version: 5.0.3
-CPython version: 3.12.3
-OpenSSL version: OpenSSL 3.0.13 30 Jan 2024
-(.venv) deepak@deepak:/mnt/c/Desktop/egp/engineering-graph-platform$ docker info
-Client:
- Version:    29.1.3
- Context:    default
- Debug Mode: false
- Plugins:
-  trust: Manage trust on Docker images (Docker Inc.)    
-    Version:  29.1.3
-    Path:     /usr/libexec/docker/cli-plugins/docker-trust
+1. Create local configuration from the safe template.
 
-Server:
-permission denied while trying to connect to the docker API at unix:///var/run/docker.sock
-(.venv) deepak@deepak:/mnt/c/Desktop/egp/engineering-graph-platform$ ls -l /var/run/docker.sock
-srw-rw---- 1 root docker 0 Aug  2 18:22 /var/run/docker.sock
-(.venv) deepak@deepak:/mnt/c/Desktop/egp/engineering-graph-platform$ getent group docker
-docker:x:108:
-(.venv) deepak@deepak:/mnt/c/Desktop/egp/engineering-graph-platform$ sudo systemctl status docker --no-pager
-[sudo] password for deepak: 
-● docker.service - Docker Application Container Engine
-     Loaded: loaded (/usr/lib/systemd/system/docker.service; enabled; preset: enabled)
-     Active: active (running) since Sun 2026-08-02 18:22:42 UTC; 1h 34min ago
-TriggeredBy: ● docker.socket
-       Docs: https://docs.docker.com
-   Main PID: 309 (dockerd)
-      Tasks: 13
-     Memory: 83.1M ()
-     CGroup: /system.slice/docker.service
-             └─309 /usr/bin/dockerd -H fd:// --containe…
+   ```powershell
+   Copy-Item .env.example .env
+   ```
 
-Aug 02 18:22:42 deepak dockerd[309]: time="2026-08-02…t"
-Aug 02 18:22:42 deepak dockerd[309]: time="2026-08-02…t"
-Aug 02 18:22:42 deepak dockerd[309]: time="2026-08-02…t"
-Aug 02 18:22:42 deepak dockerd[309]: time="2026-08-02…)"
-Aug 02 18:22:42 deepak dockerd[309]: time="2026-08-02….3
-Aug 02 18:22:42 deepak dockerd[309]: time="2026-08-02…t"
-Aug 02 18:22:42 deepak dockerd[309]: time="2026-08-02…n"
-Aug 02 18:22:42 deepak dockerd[309]: time="2026-08-02…n"
-Aug 02 18:22:42 deepak dockerd[309]: time="2026-08-02…k"
-Aug 02 18:22:42 deepak systemd[1]: Started docker.ser…e.
-Hint: Some lines were ellipsized, use -l to show in full.
-(.venv) deepak@deepak:/mnt/c/Desktop/egp/engineering-graph-platform$ sudo usermde -aG docker $USER
-sudo: usermde: command not found
-(.venv) deepak@deepak:/mnt/c/Desktop/egp/engineering-graph-platform$ sudo usermod -aG docker $USER
-(.venv) deepak@deepak:/mnt/c/Desktop/egp/engineering-graph-platform$ getent group docker
-docker:x:108:deepak
-(.venv) deepak@deepak:/mnt/c/Desktop/egp/engineering-graph-platform$
+   Use strong, local-only values in `.env`. Do not commit this file.
 
+2. Create and activate a virtual environment.
 
-docker compose -f infrastructure/compose/docker-compose.yml config
+   ```powershell
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   ```
 
-                    PHASE 0
-                       │
-        ┌──────────────┼──────────────┐
-        ↓              ↓              ↓
-     Python          Docker        FastAPI
-        ✅              ✅              ✅
-                       │
-             ┌─────────┼─────────┐
-             ↓         ↓         ↓
-          Postgres   Neo4j      MinIO
-             ✅         ✅          ✅
-             │
-             ↓
-       Manual verification
-             ✅
-             │
-             ↓
-       Health endpoint
-             ✅
-             │
-             ↓
-       Automated tests
-             ✅
-             │
-             ↓
-       Failure handling
-             ✅
-             │
-             ↓
-   Development configuration
-          ⏳ STEP 7
-             │
-             ↓
-       Basic CI checks
-          ⏳
-             │
-             ↓
-       PHASE 0 EXIT GATE
+3. Install the application and development dependencies. `pyproject.toml` is
+   the single source of truth for dependencies.
+
+   ```powershell
+   python -m pip install --upgrade pip
+   python -m pip install -e ".[dev]"
+   ```
+
+4. Start PostgreSQL, Neo4j, and MinIO.
+
+   ```powershell
+   docker compose --env-file .env -f infrastructure/compose/docker-compose.yml up -d
+   ```
+
+   If your Docker installation provides the legacy command instead, use:
+
+   ```powershell
+   docker-compose --env-file .env -f infrastructure/compose/docker-compose.yml up -d
+   ```
+
+5. Run the API.
+
+   ```powershell
+   uvicorn apps.api.main:app --reload
+   ```
+
+6. Verify the local baseline.
+
+   ```powershell
+   pytest
+   ruff check .
+   ```
+
+The API health endpoint is available at `http://127.0.0.1:8000/health` and
+interactive API documentation at `http://127.0.0.1:8000/docs`.
+
+## Security
+
+- Never place GitHub tokens, database passwords, or other credentials in this
+  repository, documentation, source code, or shell history.
+- Use GitHub CLI authentication, SSH keys, or your operating system's Git
+  credential manager for GitHub access.
+- `.env` is intentionally ignored by Git. Keep `.env.example` free of real
+  credentials.

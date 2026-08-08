@@ -1,183 +1,110 @@
-"""Tests for Entity, EvidenceBackedEntity, and entity schemas."""
+"""Tests for typed canonical entities and safe entity schemas."""
 
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
 
-from pydantic import ValidationError
 import pytest
+from pydantic import ValidationError
 
-from packages.domain.entities import Entity, EvidenceBackedEntity
-from packages.domain.enums import EntityType, ExtractionMethod
+from packages.domain.entities import DeviceEntity, DeviceProperties, EvidenceBackedEntity
+from packages.domain.enums import ExtractionMethod
 from packages.domain.evidence import Confidence, Evidence, SourceLocation
-from packages.domain.ids import generate_entity_id
+from packages.domain.identity import DeviceIdentity
+from packages.domain.scope import GraphScope
 from packages.schemas.domain.entity_schema import CreateEntityRequest, EntityResponse
 
+SCOPE = GraphScope(
+    organization_id=uuid.UUID(int=1),
+    project_id=uuid.UUID(int=2),
+    environment="prod",
+    site_id=uuid.UUID(int=3),
+)
 
-@pytest.fixture
-def sample_timestamps():
+
+def device_identity() -> DeviceIdentity:
+    return DeviceIdentity(scope=SCOPE, hostname="router-01")
+
+
+def device_entity(name: str = "Router 01") -> DeviceEntity:
     now = datetime.now(timezone.utc)
-    return now, now
+    return DeviceEntity(
+        identity=device_identity(),
+        display_name=name,
+        properties=DeviceProperties(hostname="router-01", vendor="Cisco"),
+        first_observed_at=now,
+        last_observed_at=now,
+        created_at=now,
+        updated_at=now,
+    )
 
 
-@pytest.fixture
-def sample_evidence():
-    return Evidence(
+def test_device_entity_is_typed_and_scope_aware():
+    entity = device_entity()
+    assert entity.properties.vendor == "cisco"
+    assert entity.entity_type.value == "DEVICE"
+    assert entity.scope == SCOPE
+
+
+def test_typed_entity_rejects_unknown_properties_and_naive_timestamps():
+    with pytest.raises(ValidationError):
+        DeviceProperties(hostname="router-01", unsupported="value")
+    with pytest.raises(ValidationError):
+        DeviceEntity(
+            identity=device_identity(),
+            display_name="router",
+            properties=DeviceProperties(hostname="router-01"),
+            first_observed_at=datetime.now(),
+            last_observed_at=datetime.now(),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+
+
+def test_api_request_validates_identity_property_type_and_serializes():
+    request = CreateEntityRequest(
+        identity=device_identity(),
+        display_name=" Core Router ",
+        properties=DeviceProperties(hostname="router-01", management_ip="10.0.0.1"),
+    )
+    entity = request.to_entity()
+    response = EntityResponse.from_entity(entity)
+    assert entity.display_name == "Core Router"
+    assert response.properties.management_ip == "10.0.0.1"
+    assert response.identity == entity.identity
+
+
+def test_entity_rejects_arbitrary_id_and_is_immutable():
+    now = datetime.now(timezone.utc)
+    with pytest.raises(ValidationError):
+        DeviceEntity(
+            id=uuid.uuid4(),
+            identity=device_identity(),
+            display_name="router",
+            properties=DeviceProperties(hostname="router-01"),
+            first_observed_at=now,
+            last_observed_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+    entity = device_entity()
+    with pytest.raises((ValidationError, TypeError)):
+        entity.properties = DeviceProperties(hostname="router-02")
+
+
+def test_evidence_backed_typed_entity_requires_evidence():
+    evidence = Evidence(
         source_artifact_id=uuid.uuid4(),
-        source_location=SourceLocation(line_number=10),
-        extraction_method=ExtractionMethod.DETERMINISTIC_PARSER,
-        extractor_version="1.0.0",
-        confidence=0.95,
+        source_location=SourceLocation(line_start=10),
+        extraction_method=ExtractionMethod.HUMAN,
+        extractor_version="1",
+        confidence=0.9,
         observed_at=datetime.now(timezone.utc),
     )
-
-
-def test_create_valid_entity(sample_timestamps):
-    created_at, updated_at = sample_timestamps
-    entity_id = generate_entity_id(EntityType.DEVICE, "router-01")
-
-    entity = Entity(
-        id=entity_id,
-        entity_type=EntityType.DEVICE,
-        name="router-01",
-        attributes={"vendor": "Cisco", "model": "ISR4451"},
-        tags=["core", "datacenter"],
-        created_at=created_at,
-        updated_at=updated_at,
+    backed = EvidenceBackedEntity(
+        entity=device_entity(), evidence=[evidence], confidence=Confidence.from_score(0.9)
     )
-
-    assert entity.id == entity_id
-    assert entity.entity_type == EntityType.DEVICE
-    assert entity.name == "router-01"
-    assert entity.attributes == {"vendor": "Cisco", "model": "ISR4451"}
-    assert entity.tags == ["core", "datacenter"]
-
-
-def test_entity_empty_name_validation(sample_timestamps):
-    created_at, updated_at = sample_timestamps
-    entity_id = generate_entity_id(EntityType.DEVICE, "router-01")
-
-    with pytest.raises(ValidationError):
-        Entity(
-            id=entity_id,
-            entity_type=EntityType.DEVICE,
-            name="",  # Empty name not allowed
-            created_at=created_at,
-            updated_at=updated_at,
-        )
-
-
-def test_all_entity_types_valid(sample_timestamps):
-    created_at, updated_at = sample_timestamps
-
-    for entity_type in EntityType:
-        entity_id = generate_entity_id(entity_type, f"test-{entity_type.value}")
-        entity = Entity(
-            id=entity_id,
-            entity_type=entity_type,
-            name=f"test-{entity_type.value}",
-            created_at=created_at,
-            updated_at=updated_at,
-        )
-        assert entity.entity_type == entity_type
-
-
-def test_entity_immutability(sample_timestamps):
-    created_at, updated_at = sample_timestamps
-    entity_id = generate_entity_id(EntityType.DEVICE, "router-01")
-
-    entity = Entity(
-        id=entity_id,
-        entity_type=EntityType.DEVICE,
-        name="router-01",
-        created_at=created_at,
-        updated_at=updated_at,
-    )
-
-    with pytest.raises((ValidationError, TypeError)):
-        entity.name = "new-name"  # Frozen instance cannot be mutated
-
-
-def test_create_entity_request_schema():
-    req = CreateEntityRequest(
-        entity_type=EntityType.DEVICE,
-        name="  switch-core-01  ",
-        attributes={"vendor": "Arista"},
-        tags=["edge"],
-    )
-
-    entity = req.to_entity()
-
-    assert entity.name == "switch-core-01"  # Whitespace stripped
-    assert entity.id == generate_entity_id(EntityType.DEVICE, "switch-core-01")
-    assert entity.attributes == {"vendor": "Arista"}
-    assert entity.tags == ["edge"]
-
-
-def test_entity_response_schema(sample_timestamps):
-    created_at, updated_at = sample_timestamps
-    entity_id = generate_entity_id(EntityType.DEVICE, "router-01")
-
-    entity = Entity(
-        id=entity_id,
-        entity_type=EntityType.DEVICE,
-        name="router-01",
-        attributes={"vendor": "Cisco"},
-        tags=["core"],
-        created_at=created_at,
-        updated_at=updated_at,
-    )
-
-    response = EntityResponse.from_entity(entity)
-
-    assert response.id == entity.id
-    assert response.entity_type == entity.entity_type
-    assert response.name == entity.name
-    assert response.attributes == entity.attributes
-    assert response.tags == entity.tags
-
-
-def test_evidence_backed_entity_valid(sample_timestamps, sample_evidence):
-    created_at, updated_at = sample_timestamps
-    entity_id = generate_entity_id(EntityType.DEVICE, "router-01")
-
-    entity = Entity(
-        id=entity_id,
-        entity_type=EntityType.DEVICE,
-        name="router-01",
-        created_at=created_at,
-        updated_at=updated_at,
-    )
-
-    conf = Confidence.from_score(0.95)
-    eb_entity = EvidenceBackedEntity(
-        entity=entity,
-        evidence=[sample_evidence],
-        confidence=conf,
-    )
-
-    assert eb_entity.id == entity_id
-    assert eb_entity.entity_type == EntityType.DEVICE
-    assert len(eb_entity.evidence) == 1
-    assert eb_entity.confidence.score == 0.95
-
-
-def test_evidence_backed_entity_requires_evidence(sample_timestamps):
-    created_at, updated_at = sample_timestamps
-    entity_id = generate_entity_id(EntityType.DEVICE, "router-01")
-
-    entity = Entity(
-        id=entity_id,
-        entity_type=EntityType.DEVICE,
-        name="router-01",
-        created_at=created_at,
-        updated_at=updated_at,
-    )
-
-    conf = Confidence.from_score(0.95)
-
+    assert backed.id == backed.entity.id
     with pytest.raises(ValidationError):
         EvidenceBackedEntity(
-            entity=entity,
-            evidence=[],  # Empty list must raise ValidationError
-            confidence=conf,
+            entity=device_entity(), evidence=[], confidence=Confidence.from_score(0.9)
         )

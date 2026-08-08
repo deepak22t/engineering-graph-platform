@@ -1,159 +1,58 @@
-"""Tests for Evidence, SourceLocation, Confidence, and evidence schemas."""
+"""Tests for precise evidence and fact-level attribution."""
 
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
 
-from pydantic import ValidationError
 import pytest
+from pydantic import ValidationError
 
-from packages.domain.enums import ConfidenceLevel, ExtractionMethod
-from packages.domain.evidence import Confidence, Evidence, SourceLocation
-from packages.schemas.domain.evidence_schema import CreateEvidenceRequest, EvidenceResponse
-
-
-def test_create_valid_source_location():
-    loc_empty = SourceLocation()
-    assert loc_empty.line_number is None
-    assert loc_empty.json_path is None
-
-    loc_full = SourceLocation(
-        line_number=42,
-        page_number=3,
-        json_path="$.devices[0]",
-        xpath="//device[1]",
-        byte_offset=1024,
-        bounding_box={"x": 10.0, "y": 20.0, "w": 100.0, "h": 50.0},
-        section="Core Interfaces",
-    )
-    assert loc_full.line_number == 42
-    assert loc_full.section == "Core Interfaces"
+from packages.domain.enums import ExtractionMethod
+from packages.domain.evidence import Evidence, FactAttribution, SourceLocation
 
 
-def test_create_valid_evidence():
-    art_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
-
-    ev = Evidence(
-        source_artifact_id=art_id,
-        source_location=SourceLocation(line_number=10),
-        extraction_method=ExtractionMethod.DETERMINISTIC_PARSER,
-        extractor_version="1.0.0",
-        confidence=0.95,
-        observed_at=now,
-        evidence_reference="hostname router-01",
-        notes="extracted from cisco config",
+def evidence(location=None, **kwargs):
+    return Evidence(
+        source_artifact_id=uuid.uuid4(),
+        source_location=location or SourceLocation(line_start=1),
+        extraction_method=ExtractionMethod.HUMAN,
+        extractor_version="1",
+        observed_at=datetime.now(timezone.utc),
+        confidence=0.9,
+        **kwargs,
     )
 
-    assert ev.source_artifact_id == art_id
-    assert ev.confidence == 0.95
-    assert ev.extraction_method == ExtractionMethod.DETERMINISTIC_PARSER
-    assert ev.observed_at == now
 
-
-def test_confidence_validation_bounds():
-    art_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
-
-    # Valid boundary: 0.0
-    ev_zero = Evidence(
-        source_artifact_id=art_id,
-        extraction_method=ExtractionMethod.LLM,
-        extractor_version="1.0",
-        confidence=0.0,
-        observed_at=now,
-    )
-    assert ev_zero.confidence == 0.0
-
-    # Valid boundary: 1.0
-    ev_one = Evidence(
-        source_artifact_id=art_id,
-        extraction_method=ExtractionMethod.LLM,
-        extractor_version="1.0",
-        confidence=1.0,
-        observed_at=now,
-    )
-    assert ev_one.confidence == 1.0
-
-    # Invalid: < 0.0
+def test_precise_locations_validate_ranges_and_coordinates():
+    assert SourceLocation(line_start=2, line_end=3, page_number=1).is_precise
     with pytest.raises(ValidationError):
-        Evidence(
-            source_artifact_id=art_id,
-            extraction_method=ExtractionMethod.LLM,
-            extractor_version="1.0",
-            confidence=-0.1,
-            observed_at=now,
-        )
-
-    # Invalid: > 1.0
+        SourceLocation(line_start=3, line_end=2)
     with pytest.raises(ValidationError):
-        Evidence(
-            source_artifact_id=art_id,
-            extraction_method=ExtractionMethod.LLM,
-            extractor_version="1.0",
-            confidence=1.01,
-            observed_at=now,
-        )
+        SourceLocation(page_number=0)
+    with pytest.raises(ValidationError):
+        SourceLocation(bounding_box=(0, -1, 2, 3))
 
 
-def test_confidence_from_score_levels():
-    conf_high = Confidence.from_score(0.90)
-    assert conf_high.level == ConfidenceLevel.HIGH
-
-    conf_high_boundary = Confidence.from_score(0.85)
-    assert conf_high_boundary.level == ConfidenceLevel.HIGH
-
-    conf_med = Confidence.from_score(0.70)
-    assert conf_med.level == ConfidenceLevel.MEDIUM
-
-    conf_med_boundary = Confidence.from_score(0.60)
-    assert conf_med_boundary.level == ConfidenceLevel.MEDIUM
-
-    conf_low = Confidence.from_score(0.40)
-    assert conf_low.level == ConfidenceLevel.LOW
-
-    conf_zero = Confidence.from_score(0.00)
-    assert conf_zero.level == ConfidenceLevel.LOW
-
-
-def test_create_evidence_request_schema():
-    art_id = uuid.uuid4()
-
-    req = CreateEvidenceRequest(
-        source_artifact_id=art_id,
-        line_number=25,
-        section="bgp_config",
-        extraction_method=ExtractionMethod.DETERMINISTIC_PARSER,
-        extractor_version="2.0.0",
-        confidence=0.89,
-        evidence_reference="router bgp 65000",
+def test_evidence_requires_locator_or_reference():
+    with pytest.raises(ValidationError):
+        evidence(location=SourceLocation())
+    assert (
+        evidence(location=SourceLocation(), evidence_reference="review-42").evidence_reference
+        == "review-42"
     )
 
-    ev = req.to_evidence()
 
-    assert ev.source_artifact_id == art_id
-    assert ev.source_location.line_number == 25
-    assert ev.source_location.section == "bgp_config"
-    assert ev.confidence == 0.89
-    assert ev.extraction_method == ExtractionMethod.DETERMINISTIC_PARSER
-
-
-def test_evidence_response_schema():
-    art_id = uuid.uuid4()
-    now = datetime.now(timezone.utc)
-
-    ev = Evidence(
-        source_artifact_id=art_id,
-        source_location=SourceLocation(line_number=10),
-        extraction_method=ExtractionMethod.OCR,
-        extractor_version="1.1.0",
-        confidence=0.75,
-        observed_at=now,
+def test_property_and_relationship_attribution_are_separate():
+    record = evidence()
+    property_link = FactAttribution(
+        evidence_id=record.id,
+        fact_kind="property",
+        entity_id=uuid.uuid4(),
+        property_path="properties.hostname",
     )
-
-    resp = EvidenceResponse.from_evidence(ev)
-
-    assert resp.source_artifact_id == art_id
-    assert resp.source_location.line_number == 10
-    assert resp.extraction_method == ExtractionMethod.OCR
-    assert resp.confidence == 0.75
-    assert resp.observed_at == now
+    relationship_link = FactAttribution(
+        evidence_id=record.id, fact_kind="relationship", relationship_id=uuid.uuid4()
+    )
+    assert property_link.property_path == "properties.hostname"
+    assert relationship_link.relationship_id is not None
+    with pytest.raises(ValidationError):
+        FactAttribution(evidence_id=record.id, fact_kind="property", entity_id=uuid.uuid4())

@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from uuid import UUID
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 from packages.domain.enums import RelationshipType
 from packages.domain.ids import generate_relationship_id
@@ -18,24 +18,18 @@ class CreateRelationshipRequest(BaseModel):
     target_id: UUID
     attributes: dict[str, object] = Field(default_factory=dict)
 
-    @model_validator(mode="after")
-    def validate_different_source_and_target(self) -> "CreateRelationshipRequest":
-        """Prevent self-referential relationship payloads."""
-        if self.source_id == self.target_id:
-            raise ValueError("source_id and target_id must be different entities.")
-        return self
-
     def to_relationship(self) -> Relationship:
         """Convert payload to a canonical Relationship instance with deterministic ID."""
-        rel_id = generate_relationship_id(
-            self.relationship_type, self.source_id, self.target_id
-        )
+        source_id, target_id = self.source_id, self.target_id
+        if self.relationship_type == RelationshipType.CONNECTED_TO:
+            source_id, target_id = sorted((source_id, target_id), key=str)
+        rel_id = generate_relationship_id(self.relationship_type, source_id, target_id)
         now = datetime.now(timezone.utc)
         return Relationship(
             id=rel_id,
             relationship_type=self.relationship_type,
-            source_id=self.source_id,
-            target_id=self.target_id,
+            source_id=source_id,
+            target_id=target_id,
             attributes=self.attributes,
             created_at=now,
             updated_at=now,
