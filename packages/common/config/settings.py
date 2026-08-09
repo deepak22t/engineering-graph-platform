@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import computed_field
+from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_host: str = "127.0.0.1"
     app_port: int = 8000
+    artifact_max_size_bytes: int = Field(default=5 * 1024 * 1024, gt=0)
+    artifact_bucket_name: str = Field(default="engineering-artifacts", min_length=1)
 
     postgres_host: str
     postgres_db: str

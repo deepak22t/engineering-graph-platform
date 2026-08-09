@@ -7,3 +7,5 @@ def test_settings_load():
     assert settings.app_name == "Engineering Graph Platform"
     assert settings.app_env == "development"
     assert settings.app_port == 8000
+    assert settings.artifact_max_size_bytes > 0
+    assert settings.artifact_bucket_name == "engineering-artifacts"
