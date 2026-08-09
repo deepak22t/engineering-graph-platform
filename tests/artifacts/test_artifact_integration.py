@@ -20,6 +20,7 @@ from packages.artifacts import (
     PostgresArtifactRepository,
 )
 from packages.common.config.settings import get_settings
+from packages.ingestion import IngestionService, build_default_adapter_registry
 
 pytestmark = pytest.mark.integration
 
@@ -104,7 +105,7 @@ def scope() -> ArtifactScope:
 
 
 @pytest.mark.asyncio
-async def test_sanitized_cisco_config_satisfies_phase_2_exit_gate(infrastructure):
+async def test_sanitized_cisco_config_satisfies_phase_2_and_3_exit_gates(infrastructure):
     pool, repository, storage = infrastructure
     content = (
         Path(__file__).parents[1] / "fixtures" / "artifacts" / "edge-router-01-running-config.cfg"
@@ -126,6 +127,18 @@ async def test_sanitized_cisco_config_satisfies_phase_2_exit_gate(infrastructure
         assert row["storage_key"] == version.storage_key
         assert row["status"] == "uploaded"
 
+        extraction_input = await IngestionService(
+            repository=repository,
+            registry=build_default_adapter_registry(),
+        ).prepare_extraction(artifact.id, version.version_number)
+        assert extraction_input.artifact_id == artifact.id
+        assert extraction_input.artifact_version_id == version.id
+        assert extraction_input.artifact_kind.value == "cisco_ios_running_config"
+        assert extraction_input.storage_key == version.storage_key
+        assert extraction_input.adapter_name == "cisco_ios_config"
+        assert extraction_input.adapter_version == "1"
+        assert version.status.value == "uploaded"
+
         duplicate_artifact, duplicate_version = await service(repository, storage).upload_next(
             artifact_id=artifact.id,
             original_filename="renamed-edge-router.txt",
@@ -140,7 +153,7 @@ async def test_sanitized_cisco_config_satisfies_phase_2_exit_gate(infrastructure
             )
         assert version_count == 1
 
-        response = await storage.open_original(artifact_id=artifact.id, version_number=1)
+        response = await storage.open_original(storage_key=version.storage_key)
         try:
             assert await response.read() == content
         finally:
@@ -174,8 +187,7 @@ async def test_database_failure_removes_new_minio_object(infrastructure):
     assert capturing_storage.artifact_id is not None
     with pytest.raises(S3Error):
         await storage.open_original(
-            artifact_id=capturing_storage.artifact_id,
-            version_number=capturing_storage.version_number,
+            storage_key=f"artifacts/{capturing_storage.artifact_id}/versions/{capturing_storage.version_number}/original"
         )
 
 

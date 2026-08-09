@@ -1,4 +1,4 @@
-"""Safe validation for the first Cisco topology artifact files."""
+"""Safe validation for supported deterministic-ingestion text artifacts."""
 
 from __future__ import annotations
 
@@ -11,7 +11,12 @@ from packages.artifacts.contracts import ArtifactKind
 class ArtifactFileValidator:
     """Validate raw bytes or a temporary file before artifact storage."""
 
-    _ALLOWED_EXTENSIONS = frozenset({".txt", ".cfg", ".conf"})
+    _ALLOWED_EXTENSIONS = frozenset(
+        {".txt", ".cfg", ".conf", ".cnf", ".json", ".yaml", ".yml", ".csv"}
+    )
+    _ALLOWED_APPLICATION_CONTENT_TYPES = frozenset(
+        {"application/json", "application/yaml", "application/x-yaml"}
+    )
     _BINARY_SIGNATURES = (
         b"%PDF-",
         b"\x89PNG\r\n\x1a\n",
@@ -37,7 +42,7 @@ class ArtifactFileValidator:
         self._reject_binary_signatures(content)
         text = self._decode_text(content)
         self._reject_binary_control_characters(text)
-        return ArtifactClassifier.classify_text(text)
+        return ArtifactClassifier.classify_text(text, filename=filename)
 
     def validate_file(
         self, *, filename: str, content_type: str, path: Path, size_bytes: int
@@ -53,7 +58,7 @@ class ArtifactFileValidator:
                 artifact_file.read(max(map(len, self._BINARY_SIGNATURES)))
             )
         self._validate_text_file(path)
-        return ArtifactClassifier.classify_file(path)
+        return ArtifactClassifier.classify_file(path, filename=filename)
 
     def _validate_filename(self, filename: str) -> None:
         if not filename or not filename.strip():
@@ -64,13 +69,16 @@ class ArtifactFileValidator:
         if path.name != filename or filename in {".", ".."}:
             raise ValueError("filename must be a plain file name.")
         if path.suffix and path.suffix.casefold() not in self._ALLOWED_EXTENSIONS:
-            raise ValueError("filename extension is not supported for Cisco text artifacts.")
+            raise ValueError("filename extension is not supported for text artifacts.")
 
     @staticmethod
     def _validate_content_type(content_type: str) -> None:
         normalized = content_type.split(";", maxsplit=1)[0].strip().casefold()
-        if not normalized.startswith("text/"):
-            raise ValueError("content_type must be text-like.")
+        if normalized.startswith("text/") or normalized in (
+            ArtifactFileValidator._ALLOWED_APPLICATION_CONTENT_TYPES
+        ):
+            return
+        raise ValueError("content_type must be text-like.")
 
     def _validate_size(self, size_bytes: int) -> None:
         if size_bytes <= 0:

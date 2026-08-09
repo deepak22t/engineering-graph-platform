@@ -7,11 +7,15 @@ from packages.domain.scope import GraphScope
 
 
 class ArtifactKind(str, Enum):
-    """The only artifact kinds accepted by the first Cisco topology vertical."""
+    """Artifact kinds supported by the deterministic ingestion path."""
 
     CISCO_IOS_RUNNING_CONFIG = "cisco_ios_running_config"
     CDP_NEIGHBORS_DETAIL = "cdp_neighbors_detail"
     LLDP_NEIGHBORS_DETAIL = "lldp_neighbors_detail"
+    JSON = "json"
+    YAML = "yaml"
+    CSV = "csv"
+    TEXT = "text"
 
 
 class ArtifactStatus(str, Enum):
@@ -24,6 +28,6 @@ class ArtifactStatus(str, Enum):
 
 
 class ArtifactScope(GraphScope):
-    """Mandatory location context for an uploaded Cisco topology artifact."""
+    """Mandatory location context for an uploaded engineering artifact."""
 
     site_id: UUID

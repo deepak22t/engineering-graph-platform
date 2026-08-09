@@ -65,12 +65,11 @@ class MinioArtifactStorage:
             )
         return storage_key
 
-    async def open_original(self, *, artifact_id: UUID, version_number: int):
-        """Return the internal MinIO response stream for an original artifact version."""
-        return await self._client.get_object(
-            self._bucket_name,
-            artifact_storage_key(artifact_id, version_number),
-        )
+    async def open_original(self, *, storage_key: str):
+        """Return the internal read-only stream for a trusted artifact storage key."""
+        if not storage_key or not storage_key.strip():
+            raise ValueError("storage_key must not be blank.")
+        return await self._client.get_object(self._bucket_name, storage_key)
 
     async def remove_original(self, *, artifact_id: UUID, version_number: int) -> None:
         """Remove a newly stored object when its metadata transaction fails."""

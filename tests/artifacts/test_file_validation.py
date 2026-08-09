@@ -59,7 +59,6 @@ def test_validator_accepts_only_recognized_cisco_text_artifacts(
         ("router.txt", "text/plain", b"MZ"),
         ("router.txt", "text/plain", b"\xff\xfe"),
         ("router.txt", "text/plain", b"hostname r\x00\ninterface Gi0/1\n"),
-        ("router.txt", "text/plain", b"this is ordinary text but not Cisco topology data"),
     ],
 )
 def test_validator_rejects_unsafe_or_unsupported_files(
@@ -92,3 +91,41 @@ def test_file_validation_rejects_binary_disguised_as_text_file(tmp_path, validat
             path=artifact_file,
             size_bytes=artifact_file.stat().st_size,
         )
+
+
+def test_validator_accepts_cnf_extension_for_valid_cisco_text(validator):
+    artifact_kind = validator.validate(
+        filename="router.cnf",
+        content_type="text/plain",
+        content=b"version 15.2\nhostname router-01\ninterface GigabitEthernet0/1\n",
+    )
+
+    assert artifact_kind.value == "cisco_ios_running_config"
+
+
+def test_validator_rejects_generic_binary_mime_even_when_contents_are_text(validator):
+    with pytest.raises(ValueError, match="text-like"):
+        validator.validate(
+            filename="router.cnf",
+            content_type="application/octet-stream",
+            content=b"version 15.2\nhostname router-01\ninterface GigabitEthernet0/1\n",
+        )
+
+
+@pytest.mark.parametrize(
+    "filename, content_type, content, expected_kind",
+    [
+        ("inventory.json", "application/json", b'{"devices": []}', "json"),
+        ("inventory.yaml", "application/yaml", b"devices: []\n", "yaml"),
+        ("inventory.csv", "text/csv", b"hostname,role\nrouter-01,router\n", "csv"),
+        ("notes.txt", "text/plain", b"operator notes\n", "text"),
+    ],
+)
+def test_validator_accepts_explicit_phase_three_text_formats(
+    validator, filename: str, content_type: str, content: bytes, expected_kind: str
+):
+    artifact_kind = validator.validate(
+        filename=filename, content_type=content_type, content=content
+    )
+
+    assert artifact_kind.value == expected_kind

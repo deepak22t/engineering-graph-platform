@@ -1,4 +1,4 @@
-"""Conservative classification for approved Cisco topology text artifacts."""
+"""Deterministic classification for supported text artifacts."""
 
 from pathlib import Path
 
@@ -6,21 +6,26 @@ from packages.artifacts.contracts import ArtifactKind
 
 
 class ArtifactClassifier:
-    """Classify one complete text artifact without extracting engineering facts."""
+    """Classify an artifact without extracting engineering facts."""
 
     @classmethod
-    def classify_text(cls, text: str) -> ArtifactKind:
+    def classify_text(cls, text: str, *, filename: str | None = None) -> ArtifactKind:
         """Return exactly one approved kind or reject unknown and ambiguous text."""
         if not isinstance(text, str):
             raise ValueError("artifact text must be a string.")
-        return cls._classify_markers(cls._markers_from_lines(text.splitlines()))
+        return cls._classify(
+            markers=cls._markers_from_lines(text.splitlines()), filename=filename
+        )
 
     @classmethod
-    def classify_file(cls, path: Path) -> ArtifactKind:
+    def classify_file(cls, path: Path, *, filename: str | None = None) -> ArtifactKind:
         """Classify a UTF-8 temporary file without loading it all into memory."""
         try:
             with path.open("r", encoding="utf-8") as artifact_file:
-                return cls._classify_markers(cls._markers_from_lines(artifact_file))
+                return cls._classify(
+                    markers=cls._markers_from_lines(artifact_file),
+                    filename=filename or path.name,
+                )
         except UnicodeDecodeError as error:
             raise ValueError("artifact content must be valid UTF-8 text.") from error
 
@@ -51,7 +56,7 @@ class ArtifactClassifier:
         )
 
     @classmethod
-    def _classify_markers(cls, markers: set[str]) -> ArtifactKind:
+    def _classify(cls, *, markers: set[str], filename: str | None) -> ArtifactKind:
         matches = [
             kind
             for kind, is_match in (
@@ -61,13 +66,30 @@ class ArtifactClassifier:
             )
             if is_match
         ]
-        if not matches:
-            raise ValueError("text is not a supported Cisco topology artifact.")
         if len(matches) > 1:
             raise ValueError(
                 "text matches multiple artifact kinds and cannot be classified safely."
             )
-        return matches[0]
+        if matches:
+            return matches[0]
+        return cls._classify_explicit_format(filename)
+
+    @staticmethod
+    def _classify_explicit_format(filename: str | None) -> ArtifactKind:
+        if filename is None:
+            raise ValueError("text is not a supported artifact format.")
+
+        kind_by_extension = {
+            ".json": ArtifactKind.JSON,
+            ".yaml": ArtifactKind.YAML,
+            ".yml": ArtifactKind.YAML,
+            ".csv": ArtifactKind.CSV,
+            ".txt": ArtifactKind.TEXT,
+        }
+        try:
+            return kind_by_extension[Path(filename).suffix.casefold()]
+        except KeyError as error:
+            raise ValueError("text is not a supported artifact format.") from error
 
     @staticmethod
     def _is_running_config(markers: set[str]) -> bool:

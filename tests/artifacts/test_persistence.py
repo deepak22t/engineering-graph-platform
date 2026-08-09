@@ -18,9 +18,14 @@ class FakeConnection:
     def __init__(self) -> None:
         self.statements: list[tuple[str, tuple]] = []
         self.transaction_entered = False
+        self.row = None
 
     async def execute(self, statement: str, *arguments) -> None:
         self.statements.append((statement, arguments))
+
+    async def fetchrow(self, statement: str, *arguments):
+        self.statements.append((statement, arguments))
+        return self.row
 
     @asynccontextmanager
     async def transaction(self):
@@ -85,3 +90,17 @@ async def test_initial_artifact_and_version_are_inserted_in_one_transaction():
     assert pool.connection.statements[0][1][0] == artifact.id
     assert pool.connection.statements[1][1][1] == version.artifact_id
     assert pool.connection.statements[1][1][9] == "uploaded"
+
+
+@pytest.mark.asyncio
+async def test_get_version_returns_exact_immutable_metadata_or_none() -> None:
+    pool = FakePool()
+    _, version = records()
+    pool.connection.row = version.model_dump()
+    repository = PostgresArtifactRepository(pool)
+
+    assert await repository.get_version(version.artifact_id, version.version_number) == version
+    assert pool.connection.statements[-1][1] == (version.artifact_id, version.version_number)
+
+    pool.connection.row = None
+    assert await repository.get_version(version.artifact_id, 2) is None

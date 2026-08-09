@@ -1,4 +1,4 @@
-"""Tests for conservative Cisco topology artifact classification."""
+"""Tests for deterministic text artifact classification."""
 
 from pathlib import Path
 
@@ -24,8 +24,36 @@ from packages.artifacts import ArtifactClassifier, ArtifactKind
         ),
     ],
 )
-def test_classifier_returns_only_one_approved_artifact_kind(text: str, expected_kind: ArtifactKind):
+def test_classifier_returns_only_one_approved_artifact_kind(
+    text: str, expected_kind: ArtifactKind
+) -> None:
     assert ArtifactClassifier.classify_text(text) is expected_kind
+
+
+@pytest.mark.parametrize(
+    "filename, expected_kind",
+    [
+        ("inventory.json", ArtifactKind.JSON),
+        ("inventory.yaml", ArtifactKind.YAML),
+        ("inventory.yml", ArtifactKind.YAML),
+        ("inventory.csv", ArtifactKind.CSV),
+        ("notes.txt", ArtifactKind.TEXT),
+    ],
+)
+def test_classifier_routes_explicit_non_cisco_formats(
+    filename: str, expected_kind: ArtifactKind
+) -> None:
+    assert (
+        ArtifactClassifier.classify_text("unstructured content", filename=filename)
+        is expected_kind
+    )
+
+
+def test_cisco_markers_take_priority_over_plain_text_extension() -> None:
+    assert ArtifactClassifier.classify_text(
+        "version 15.2\nhostname router-01\ninterface GigabitEthernet0/1\n",
+        filename="router.txt",
+    ) is ArtifactKind.CISCO_IOS_RUNNING_CONFIG
 
 
 @pytest.mark.parametrize(
@@ -44,24 +72,29 @@ def test_classifier_returns_only_one_approved_artifact_kind(text: str, expected_
         ),
     ],
 )
-def test_classifier_rejects_unknown_partial_or_ambiguous_text(text: str):
+def test_classifier_rejects_unknown_partial_or_ambiguous_text(text: str) -> None:
     with pytest.raises(ValueError):
         ArtifactClassifier.classify_text(text)
 
 
-def test_classifier_rejects_non_text_input():
+def test_classifier_rejects_unrecognized_config_shaped_text() -> None:
+    with pytest.raises(ValueError, match="supported artifact format"):
+        ArtifactClassifier.classify_text("unstructured content", filename="router.cfg")
+
+
+def test_classifier_rejects_non_text_input() -> None:
     with pytest.raises(ValueError, match="must be a string"):
         ArtifactClassifier.classify_text(b"not text")  # type: ignore[arg-type]
 
 
-def test_classifier_classifies_temporary_file_without_text_loading(tmp_path):
+def test_classifier_classifies_temporary_file_without_text_loading(tmp_path: Path) -> None:
     artifact_file = tmp_path / "router.cfg"
     artifact_file.write_text("version 17\nhostname router-01\ninterface Gi0/1\n")
 
-    assert ArtifactClassifier.classify_file(artifact_file) == ArtifactKind.CISCO_IOS_RUNNING_CONFIG
+    assert ArtifactClassifier.classify_file(artifact_file) is ArtifactKind.CISCO_IOS_RUNNING_CONFIG
 
 
-def test_sanitized_cisco_config_fixture_is_classified_as_running_config():
+def test_sanitized_cisco_config_fixture_is_classified_as_running_config() -> None:
     fixture = (
         Path(__file__).parents[1] / "fixtures" / "artifacts" / "edge-router-01-running-config.cfg"
     )

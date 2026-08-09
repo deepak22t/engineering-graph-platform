@@ -70,7 +70,7 @@ async def test_store_original_creates_bucket_and_preserves_original_bytes(tmp_pa
     assert client.bucket_exists_value
     assert key == artifact_storage_key(artifact_id, 1)
     assert client.objects[("engineering-artifacts", key)] == (b"original\x00bytes", "text/plain")
-    assert await storage.open_original(artifact_id=artifact_id, version_number=1) == (
+    assert await storage.open_original(storage_key=key) == (
         b"original\x00bytes",
         "text/plain",
     )

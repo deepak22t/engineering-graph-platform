@@ -111,3 +111,15 @@ async def test_create_artifact_version_route_only_adapts_http_request_to_service
     assert response.status_code == 201
     assert service.next_call["artifact_id"] == artifact_id
     assert service.next_call["content"] == b"abc"
+
+
+def test_artifact_upload_endpoints_declare_text_plain_file_parts():
+    app = FastAPI()
+    app.include_router(artifacts.router)
+    schema = app.openapi()
+
+    for path in ("/artifacts", "/artifacts/{artifact_id}/versions"):
+        encoding = schema["paths"][path]["post"]["requestBody"]["content"]["multipart/form-data"][
+            "encoding"
+        ]
+        assert encoding["file"]["contentType"] == "text/plain"

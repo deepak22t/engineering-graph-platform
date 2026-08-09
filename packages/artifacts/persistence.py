@@ -58,6 +58,11 @@ class ArtifactRepository(Protocol):
     async def get_latest_version(self, artifact_id: UUID) -> ArtifactVersion | None:
         """Return the newest persisted immutable version for an Artifact."""
 
+    async def get_version(
+        self, artifact_id: UUID, version_number: int
+    ) -> ArtifactVersion | None:
+        """Return one immutable ArtifactVersion by its logical version number."""
+
     async def create_version(self, version: ArtifactVersion) -> None:
         """Persist one already-stored, non-initial ArtifactVersion."""
 
@@ -116,6 +121,22 @@ class PostgresArtifactRepository:
             ),
             created_at=row["created_at"],
         )
+
+    async def get_version(
+        self, artifact_id: UUID, version_number: int
+    ) -> ArtifactVersion | None:
+        """Return one immutable version by its logical version number."""
+        async with self._pool.acquire() as connection:
+            row = await connection.fetchrow(
+                f"""
+                SELECT {_VERSION_COLUMNS}
+                FROM artifact_versions
+                WHERE artifact_id = $1 AND version_number = $2
+                """,
+                artifact_id,
+                version_number,
+            )
+        return self._version_from_row(row) if row is not None else None
 
     async def get_latest_version(self, artifact_id: UUID) -> ArtifactVersion | None:
         """Return the latest immutable version by version number."""

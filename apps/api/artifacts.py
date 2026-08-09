@@ -12,8 +12,19 @@ from packages.schemas.artifacts import ArtifactUploadMetadata, ArtifactUploadRes
 
 router = APIRouter(prefix="/artifacts", tags=["artifacts"])
 
+_TEXT_FILE_ENCODING = {
+    "requestBody": {
+        "content": {"multipart/form-data": {"encoding": {"file": {"contentType": "text/plain"}}}}
+    }
+}
 
-@router.post("", response_model=ArtifactUploadResponse, status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "",
+    response_model=ArtifactUploadResponse,
+    status_code=status.HTTP_201_CREATED,
+    openapi_extra=_TEXT_FILE_ENCODING,
+)
 async def create_artifact(
     organization_id: UUID = Form(),
     project_id: UUID = Form(),
@@ -52,6 +63,7 @@ async def create_artifact(
     "/{artifact_id}/versions",
     response_model=ArtifactUploadResponse,
     status_code=status.HTTP_201_CREATED,
+    openapi_extra=_TEXT_FILE_ENCODING,
 )
 async def create_artifact_version(
     artifact_id: UUID,

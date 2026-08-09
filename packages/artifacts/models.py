@@ -10,7 +10,7 @@ from packages.domain.normalization import normalize_timestamp
 
 
 class Artifact(BaseModel):
-    """One logical input source within a mandatory Cisco topology scope."""
+    """One logical input source within a mandatory engineering scope."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

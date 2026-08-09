@@ -154,7 +154,9 @@ class ArtifactUploadService:
             if artifact is None:
                 raise ValueError("artifact does not exist.")
 
-            resolved_kind = artifact_kind or self._classifier.classify_file(temporary_artifact.path)
+            resolved_kind = artifact_kind or self._classifier.classify_file(
+                temporary_artifact.path, filename=original_filename
+            )
             latest_version = await self._repository.get_latest_version(artifact_id)
             if latest_version is None:
                 raise ValueError("artifact has no existing version.")
@@ -209,7 +211,9 @@ class ArtifactUploadService:
     ) -> tuple[Artifact, ArtifactVersion]:
         storage_key: str | None = None
         try:
-            resolved_kind = artifact_kind or self._classifier.classify_file(temporary_artifact.path)
+            resolved_kind = artifact_kind or self._classifier.classify_file(
+                temporary_artifact.path, filename=original_filename
+            )
             storage_key = await self._storage.store_original(
                 artifact_id=artifact.id,
                 version_number=version_number,
