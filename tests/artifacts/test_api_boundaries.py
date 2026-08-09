@@ -3,8 +3,9 @@
 import inspect
 from uuid import UUID
 
+import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
 
 from apps.api import artifacts
 from packages.artifacts import Artifact, ArtifactKind, ArtifactScope, ArtifactVersion
@@ -68,22 +69,24 @@ def test_artifact_routes_delegate_business_work_to_service():
     assert "service.upload_next(" in source
 
 
-def test_create_artifact_route_only_adapts_http_request_to_service():
+@pytest.mark.asyncio
+async def test_create_artifact_route_only_adapts_http_request_to_service():
     app = FastAPI()
     service = FakeUploadService()
     app.state.artifact_upload_service = service
     app.include_router(artifacts.router)
 
-    response = TestClient(app).post(
-        "/artifacts",
-        data={
-            "organization_id": str(UUID(int=1)),
-            "project_id": str(UUID(int=2)),
-            "environment": "prod",
-            "site_id": str(UUID(int=3)),
-        },
-        files={"file": ("router.cfg", b"abc", "text/plain")},
-    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/artifacts",
+            data={
+                "organization_id": str(UUID(int=1)),
+                "project_id": str(UUID(int=2)),
+                "environment": "prod",
+                "site_id": str(UUID(int=3)),
+            },
+            files={"file": ("router.cfg", b"abc", "text/plain")},
+        )
 
     assert response.status_code == 201
     assert service.initial_call["content"] == b"abc"
@@ -91,17 +94,19 @@ def test_create_artifact_route_only_adapts_http_request_to_service():
     assert "storage_key" not in response.json()["version"]
 
 
-def test_create_artifact_version_route_only_adapts_http_request_to_service():
+@pytest.mark.asyncio
+async def test_create_artifact_version_route_only_adapts_http_request_to_service():
     app = FastAPI()
     service = FakeUploadService()
     app.state.artifact_upload_service = service
     app.include_router(artifacts.router)
     artifact_id = UUID(int=10)
 
-    response = TestClient(app).post(
-        f"/artifacts/{artifact_id}/versions",
-        files={"file": ("renamed-router.cfg", b"abc", "text/plain")},
-    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            f"/artifacts/{artifact_id}/versions",
+            files={"file": ("renamed-router.cfg", b"abc", "text/plain")},
+        )
 
     assert response.status_code == 201
     assert service.next_call["artifact_id"] == artifact_id
