@@ -1,4 +1,4 @@
-"""Framework-independent contract for Phase 3 ingestion adapters."""
+"""Framework-independent contract for deterministic ingestion adapters."""
 
 from __future__ import annotations
 
@@ -6,11 +6,13 @@ from abc import ABC, abstractmethod
 
 from packages.artifacts.contracts import ArtifactKind
 from packages.artifacts.models import Artifact, ArtifactVersion
+from packages.domain.proposals import ExtractionResult
+from packages.extraction.contracts import VerifiedArtifactText
 from packages.ingestion.models import ExtractionInput
 
 
 class IngestionAdapter(ABC):
-    """Declare and prepare one safely classified artifact kind for extraction."""
+    """Own one artifact kind and later delegate verified text to one deterministic parser."""
 
     name: str
     version: str
@@ -38,4 +40,15 @@ class IngestionAdapter(ABC):
             storage_key=version.storage_key,
             adapter_name=self.name,
             adapter_version=self.version,
+        )
+
+    async def extract(
+        self,
+        *,
+        extraction_input: ExtractionInput,
+        source: VerifiedArtifactText,
+    ) -> ExtractionResult:
+        """Return typed proposals from verified source text once a parser is installed."""
+        raise NotImplementedError(
+            f"adapter {self.name} has no deterministic extraction parser configured."
         )

@@ -63,6 +63,11 @@ class ArtifactRepository(Protocol):
     ) -> ArtifactVersion | None:
         """Return one immutable ArtifactVersion by its logical version number."""
 
+    async def update_version_status(
+        self, artifact_id: UUID, version_number: int, status: ArtifactStatus
+    ) -> None:
+        """Update processing lifecycle status for one immutable artifact version."""
+
     async def create_version(self, version: ArtifactVersion) -> None:
         """Persist one already-stored, non-initial ArtifactVersion."""
 
@@ -152,6 +157,26 @@ class PostgresArtifactRepository:
                 artifact_id,
             )
         return self._version_from_row(row) if row is not None else None
+
+    async def update_version_status(
+        self, artifact_id: UUID, version_number: int, status: ArtifactStatus
+    ) -> None:
+        """Update processing lifecycle status for one immutable artifact version."""
+        async with self._pool.acquire() as connection:
+            result = await connection.execute(
+                """
+                UPDATE artifact_versions
+                SET status = $3, updated_at = NOW()
+                WHERE artifact_id = $1 AND version_number = $2
+                """,
+                artifact_id,
+                version_number,
+                status.value,
+            )
+        if result == "UPDATE 0":
+            raise ValueError(
+                f"Artifact version {artifact_id}/{version_number} does not exist."
+            )
 
     async def create_version(self, version: ArtifactVersion) -> None:
         """Persist a later version after its original object has been stored."""

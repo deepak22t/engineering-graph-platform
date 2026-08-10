@@ -9,6 +9,7 @@ from packages.artifacts import (
     Artifact,
     ArtifactKind,
     ArtifactScope,
+    ArtifactStatus,
     ArtifactVersion,
     PostgresArtifactRepository,
 )
@@ -20,8 +21,9 @@ class FakeConnection:
         self.transaction_entered = False
         self.row = None
 
-    async def execute(self, statement: str, *arguments) -> None:
+    async def execute(self, statement: str, *arguments) -> str:
         self.statements.append((statement, arguments))
+        return "UPDATE 1" if "UPDATE artifact_versions" in statement else "INSERT 0 1"
 
     async def fetchrow(self, statement: str, *arguments):
         self.statements.append((statement, arguments))
@@ -104,3 +106,17 @@ async def test_get_version_returns_exact_immutable_metadata_or_none() -> None:
 
     pool.connection.row = None
     assert await repository.get_version(version.artifact_id, 2) is None
+
+
+@pytest.mark.asyncio
+async def test_update_version_status_updates_only_the_selected_version() -> None:
+    pool = FakePool()
+    _, version = records()
+
+    await PostgresArtifactRepository(pool).update_version_status(
+        version.artifact_id, version.version_number, ArtifactStatus.PROCESSING
+    )
+
+    statement, arguments = pool.connection.statements[-1]
+    assert "UPDATE artifact_versions" in statement
+    assert arguments == (version.artifact_id, version.version_number, "processing")

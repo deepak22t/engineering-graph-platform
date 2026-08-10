@@ -4,11 +4,12 @@ from datetime import datetime, timezone
 from typing import Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from packages.domain.confidence import Confidence
 from packages.domain.entities.base import ObservationState
 from packages.domain.enums import ExtractionMethod
+from packages.domain.normalization import normalize_timestamp
 
 
 class SourceLocation(BaseModel):
@@ -75,11 +76,16 @@ class Evidence(BaseModel):
     extracted_value: str | None = None
     extraction_method: ExtractionMethod
     extractor_version: str
-    observed_at: datetime
+    observed_at: datetime | None = None
     observation_state: ObservationState = ObservationState.OBSERVED
     recorded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     confidence: float = Field(ge=0.0, le=1.0)
     notes: str | None = None
+
+    @field_validator("observed_at", "recorded_at")
+    @classmethod
+    def normalize_known_timestamps(cls, value: datetime | None) -> datetime | None:
+        return normalize_timestamp(value) if value is not None else None
 
     @model_validator(mode="after")
     def require_verifiable_locator(self) -> "Evidence":

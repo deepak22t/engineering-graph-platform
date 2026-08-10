@@ -43,9 +43,13 @@ def test_each_entity_type_has_typed_properties():
 
 def test_engineering_values_are_normalized_and_invalid_values_rejected():
     interface = InterfaceProperties(
-        interface_name=" Eth0 ", interface_type=" Ethernet ", mac_address="AA-BB-CC-DD-EE-FF"
+        interface_name=" Eth0 ",
+        interface_type=" Ethernet ",
+        description=" Uplink to distribution switch ",
+        mac_address="AA-BB-CC-DD-EE-FF",
     )
     assert interface.interface_name == "eth0"
+    assert interface.description == "Uplink to distribution switch"
     assert interface.mac_address == "aa:bb:cc:dd:ee:ff"
     with pytest.raises(ValidationError):
         InterfaceProperties(interface_name="eth0", interface_type="ethernet", mac_address="bad")

@@ -68,6 +68,7 @@ class ComponentProperties(EntityProperties):
 class InterfaceProperties(EntityProperties):
     interface_name: str = Field(min_length=1, max_length=255)
     interface_type: str = Field(min_length=1, max_length=100)
+    description: str | None = Field(default=None, max_length=1_024)
     mac_address: str | None = None
     admin_status: LinkStatus = LinkStatus.UNKNOWN
     operational_status: LinkStatus = LinkStatus.UNKNOWN
@@ -83,6 +84,11 @@ class InterfaceProperties(EntityProperties):
     @classmethod
     def normalize_interface_type(cls, value: str) -> str:
         return normalize_text(value)
+
+    @field_validator("description")
+    @classmethod
+    def normalize_description(cls, value: str | None) -> str | None:
+        return normalize_text(value, casefold=False) if value is not None else None
 
     @field_validator("mac_address")
     @classmethod

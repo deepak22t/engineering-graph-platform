@@ -49,6 +49,11 @@ class Confidence(BaseModel):
         return cls(score=score, method=method, rationale=reasoning)
 
 
+def confidence_score_for_method(extraction_method: ExtractionMethod) -> float:
+    """Return the shared initial confidence candidate for one extraction method."""
+    return _METHOD_WEIGHT[extraction_method]
+
+
 def aggregate_confidence(evidence_records: Iterable) -> Confidence:
     """Aggregate evidence deterministically with method weights and conflict penalty."""
     records = sorted(tuple(evidence_records), key=lambda item: str(item.id))
