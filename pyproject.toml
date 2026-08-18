@@ -34,6 +34,9 @@ addopts = "-ra -q --import-mode=importlib"
 testpaths = ["tests"]
 asyncio_mode = "auto"
 pythonpath = ["."]
+markers = [
+    "integration: requires running PostgreSQL and MinIO services",
+]
 
 [tool.ruff]
 line-length = 100

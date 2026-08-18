@@ -1,0 +1,3 @@
+Device ID: edge-router-01
+Interface: GigabitEthernet0/1
+Port ID (outgoing port): GigabitEthernet0/0

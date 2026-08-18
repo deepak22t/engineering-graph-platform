@@ -5,12 +5,14 @@ from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from packages.domain.entities import CanonicalEntity
 from packages.domain.enums import EntityType, ExtractionMethod, RelationshipType
 from packages.domain.evidence import Evidence
 from packages.domain.relationships import Relationship
+from packages.domain.scope import GraphScope
+from packages.domain.validation import ValidationFinding
 
 
 class ProposalStatus(str, Enum):
@@ -54,14 +56,31 @@ class AttributeProposal(ProposalBase):
 
 
 class ExtractionResult(BaseModel):
-    """Batch result returned by a parser/OCR/VLM/LLM; contains proposals only."""
+    """Typed, immutable extraction output for one exact immutable artifact version."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
+
+    artifact_id: UUID
+    artifact_version_id: UUID
+    artifact_version_number: int = Field(ge=1)
+    artifact_kind: str = Field(min_length=1, max_length=128)
+    artifact_checksum: str = Field(pattern=r"^[0-9a-f]{64}$")
+    scope: GraphScope
     extraction_method: ExtractionMethod
-    extractor_version: str
+    extractor_name: str = Field(min_length=1, max_length=255)
+    extractor_version: str = Field(min_length=1, max_length=255)
     entity_proposals: list[EntityProposal] = Field(default_factory=list)
     relationship_proposals: list[RelationshipProposal] = Field(default_factory=list)
     attribute_proposals: list[AttributeProposal] = Field(default_factory=list)
+    findings: list[ValidationFinding] = Field(default_factory=list)
+    evidence_records: list[Evidence] = Field(default_factory=list)
+
+    @field_validator("artifact_kind", "extractor_name", "extractor_version")
+    @classmethod
+    def reject_blank_metadata(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("metadata value must not be blank.")
+        return value
 
 
 # Canonical aliases intentionally live beside proposal contracts, never inherit from them.

@@ -56,3 +56,16 @@ def test_property_and_relationship_attribution_are_separate():
     assert relationship_link.relationship_id is not None
     with pytest.raises(ValidationError):
         FactAttribution(evidence_id=record.id, fact_kind="property", entity_id=uuid.uuid4())
+
+
+def test_evidence_does_not_invent_an_observation_time() -> None:
+    record = Evidence(
+        source_artifact_id=uuid.uuid4(),
+        source_location=SourceLocation(line_start=1),
+        extraction_method=ExtractionMethod.DETERMINISTIC_PARSER,
+        extractor_version="1",
+        confidence=0.9,
+    )
+
+    assert record.observed_at is None
+    assert record.recorded_at.tzinfo is not None
