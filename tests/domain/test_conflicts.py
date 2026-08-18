@@ -40,10 +40,19 @@ def test_conflicts_retain_competing_claims_without_resolution():
 
 def test_review_correction_requires_explicit_value():
     with pytest.raises(ValidationError):
-        ReviewDecision(decision="correct", reviewer_id=uuid.uuid4(), reason="wrong")
+        ReviewDecision(
+            conflict_id=uuid.uuid4(),
+            decision="correct",
+            reviewer_id=uuid.uuid4(),
+            reason="wrong",
+        )
     assert (
         ReviewDecision(
-            decision="correct", reviewer_id=uuid.uuid4(), corrected_value="100", reason="verified"
+            conflict_id=uuid.uuid4(),
+            decision="correct",
+            reviewer_id=uuid.uuid4(),
+            corrected_value="100",
+            reason="verified",
         ).corrected_value
         == "100"
     )
